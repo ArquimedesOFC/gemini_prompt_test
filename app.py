@@ -97,7 +97,7 @@ if api_key:
             
             # Exibe mensagens
             for message in st.session_state.messages:
-                with st.chat_message(message["role"]):
+                with st.chat_message(message["role"], avatar=r"C:\Users\Aluno\Downloads\gemini\assistente.png"):  # Usando assistente.png para ambos
                     st.markdown(message["content"])
             
             # Entrada do usuário
@@ -105,15 +105,16 @@ if api_key:
             
             if user_query:
                 st.session_state.messages.append({"role": "user", "content": user_query})
-                with st.chat_message("user"):
+                with st.chat_message("user", avatar=r"C:\Users\Aluno\Downloads\gemini\user.png"):  # Usando assistente.png para o usuário
                     st.markdown(user_query)
                 
                 with st.spinner("Gerando resposta..."):
                     response = mode.generate_content(user_query)
                     resposta_texto = response.text if hasattr(response, "text") else "Não consegui gerar uma resposta."
                 
+                # Exibe a resposta do assistente sem a imagem extra
                 st.session_state.messages.append({"role": "assistant", "content": resposta_texto})
-                with st.chat_message("assistant"):
+                with st.chat_message("assistant", avatar=r"C:\Users\Aluno\Downloads\gemini\assistente.png"):  # Usando assistente.png para o assistente
                     st.markdown(resposta_texto)
             
         else:
