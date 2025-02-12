@@ -11,6 +11,7 @@ st.markdown("""
         .title { text-align: center; font-size: 2.5rem; margin-top: 20px; }
         .container { display: flex; justify-content: center; align-items: center; text-align: center; }
         .prompt-container { width: 60%; margin-top: 20px; }
+        .footer-btn { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); }
     </style>
 """, unsafe_allow_html=True)
 
@@ -78,44 +79,50 @@ if api_key:
                     st.session_state.messages = []
                     st.rerun()
             
-            # Botão para iniciar novo prompt
-            if st.sidebar.button("Iniciar Novo Prompt"):
-                if st.session_state.messages:
-                    titulo = st.session_state.messages[0]["content"] if st.session_state.messages else "Conversa Anônima"
-                    conversa = str(st.session_state.messages)
-                    
-                    # Verificar se o título já existe no banco de dados
-                    cursor.execute("SELECT COUNT(*) FROM historico WHERE titulo = ?", (titulo,))
-                    if cursor.fetchone()[0] == 0:  # Se não encontrar nenhum título igual
-                        cursor.execute("INSERT INTO historico (titulo, conversa) VALUES (?, ?)", (titulo, conversa))
-                        conn.commit()
-                    else:
-                        st.sidebar.warning(f"O título '{titulo}' já existe no histórico.")
-                
-                st.session_state.messages = []
-                st.rerun()
-            
             # Exibe mensagens
             for message in st.session_state.messages:
-                with st.chat_message(message["role"], avatar=r"C:\Users\Aluno\Downloads\gemini\assistente.png"):  # Usando assistente.png para ambos
+                with st.chat_message(message["role"], avatar=r"C:\Users\Aluno\Downloads\gemini\assistente.png"):
                     st.markdown(message["content"])
             
             # Entrada do usuário
             user_query = st.chat_input("Digite sua mensagem...")
             
             if user_query:
+                # Adiciona a mensagem do usuário ao histórico
                 st.session_state.messages.append({"role": "user", "content": user_query})
-                with st.chat_message("user", avatar=r"C:\Users\Aluno\Downloads\gemini\user.png"):  # Usando assistente.png para o usuário
+                with st.chat_message("user", avatar=r"C:\Users\Aluno\Downloads\gemini\user.png"):
                     st.markdown(user_query)
                 
+                # Criação do contexto completo, incluindo todas as mensagens anteriores
+                context = "\n".join([msg["content"] for msg in st.session_state.messages])
+                
                 with st.spinner("Gerando resposta..."):
-                    response = mode.generate_content(user_query)
+                    response = mode.generate_content(context)
                     resposta_texto = response.text if hasattr(response, "text") else "Não consegui gerar uma resposta."
                 
-                # Exibe a resposta do assistente sem a imagem extra
+                # Exibe a resposta do assistente
                 st.session_state.messages.append({"role": "assistant", "content": resposta_texto})
-                with st.chat_message("assistant", avatar=r"C:\Users\Aluno\Downloads\gemini\assistente.png"):  # Usando assistente.png para o assistente
+                with st.chat_message("assistant", avatar=r"C:\Users\Aluno\Downloads\gemini\assistente.png"):
                     st.markdown(resposta_texto)
+            
+            # Botão "Iniciar Novo Prompt" posicionado na parte inferior da interface
+            st.markdown('<div class="footer-btn">', unsafe_allow_html=True)
+            if st.button("Iniciar Novo Prompt"):
+                if st.session_state.messages:
+                    titulo = st.session_state.messages[0]["content"] if st.session_state.messages else "Conversa Anônima"
+                    conversa = str(st.session_state.messages)
+                    
+                    # Verificar se o título já existe no banco de dados
+                    cursor.execute("SELECT COUNT(*) FROM historico WHERE titulo = ?", (titulo,))
+                    if cursor.fetchone()[0] == 0:
+                        cursor.execute("INSERT INTO historico (titulo, conversa) VALUES (?, ?)", (titulo, conversa))
+                        conn.commit()
+                    else:
+                        st.warning(f"O título '{titulo}' já existe no histórico.")
+                
+                st.session_state.messages = []
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
             
         else:
             st.warning("Nenhum modelo disponível para geração de conteúdo.")
