@@ -8,58 +8,41 @@ st.set_page_config(page_title="Assistente Gemini", page_icon=r"C:\Users\Aluno\Do
 
 st.markdown("""
     <style>
-        .title {
-            text-align: center;
-            font-size: 2.5rem;
-            margin-top: 20px;
-        }
-        .container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-        }
-        .prompt-container {
-            width: 60%;
-            margin-top: 20px;
-        }
-        .image-container {
-            margin-top: 49px;
-            text-align: right;
-        }
+        .title { text-align: center; font-size: 2.5rem; margin-top: 20px; }
+        .container { display: flex; justify-content: center; align-items: center; text-align: center; }
+        .prompt-container { width: 60%; margin-top: 20px; }
     </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<h1 class="title">Assistente Gemini</h1>', unsafe_allow_html=True)
 
-ia_image_path = r"C:\Users\Aluno\Downloads\gemini\assistente.png"
-
 def saudacao_hora_atual():
     hora_atual = datetime.now().hour
     if hora_atual < 12:
-        return "Bom dia! Como posso ajuda-lo?"
+        return "Bom dia! Como posso ajudá-lo?"
     elif hora_atual < 18:
-        return "Boa tarde! Como posso ajuda-lo?"
+        return "Boa tarde! Como posso ajudá-lo?"
     else:
-        return "Boa noite! Como posso ajuda-lo?"
+        return "Boa noite! Como posso ajudá-lo?"
 
-conn = sqlite3.connect("historico.db")
+# Configuração do banco de dados
+conn = sqlite3.connect("historico.db", check_same_thread=False)
 cursor = conn.cursor()
 
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS historico (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        pergunta TEXT UNIQUE,
-        resposta TEXT
+        titulo TEXT UNIQUE,
+        conversa TEXT
     )
 """)
 conn.commit()
 
+# Inicializa a sessão
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
 if 'show_history' not in st.session_state:
     st.session_state.show_history = False
-
-if 'selected_question' not in st.session_state:
-    st.session_state.selected_question = None
 
 api_key = os.environ.get("GOOGLE_GEMINI_API_KEY") or st.sidebar.text_input("Insira sua chave da API:", type="password")
 
@@ -75,71 +58,63 @@ if api_key:
         if supported_models:
             mode = genai.GenerativeModel(supported_models[0].name)
             
-            st.sidebar.subheader("Histórico de Conversas")
-            
-            if st.sidebar.button("Mostrar Histórico"):
+            # Botão para exibir histórico
+            if st.sidebar.button("Histórico de Conversas"):
                 st.session_state.show_history = not st.session_state.show_history
             
             if st.session_state.show_history:
-                cursor.execute("SELECT pergunta FROM historico ORDER BY id DESC")
-                perguntas = cursor.fetchall()
+                st.sidebar.subheader("Histórico de Conversas")
+                cursor.execute("SELECT titulo, conversa FROM historico ORDER BY id DESC")
+                historico = cursor.fetchall()
+                for titulo, conversa in historico:
+                    if st.sidebar.button(titulo[:50] + "..." if len(titulo) > 50 else titulo):
+                        st.session_state.messages = eval(conversa)
                 
-                for idx, (pergunta,) in enumerate(perguntas):
-                    resumo = pergunta[:50] + "..." if len(pergunta) > 50 else pergunta
-                    if st.sidebar.button(resumo, key=f"question_{idx}", help=pergunta):
-                        st.session_state.selected_question = pergunta
-                        st.session_state.show_history = True
-
-            if not st.session_state.show_history:
-                with st.container():
-                    col1, col2 = st.columns([1, 8])
-                    
-                    with col1:
-                        st.markdown('<div class="image-container">', unsafe_allow_html=True)
-                        st.image(ia_image_path, width=47)
-                        st.markdown('</div>', unsafe_allow_html=True)
-                    
-                    with col2:
-                        saudacao = saudacao_hora_atual()
-                        st.markdown('<div class="prompt-container">', unsafe_allow_html=True)
-                        st.text_area(label="", value=saudacao, height=80, max_chars=None, key="greeting", disabled=True)
-                        user_query = st.text_input("Digite sua dúvida abaixo...", "")
-                        st.markdown('</div>', unsafe_allow_html=True)
-
-            if "show_history" in st.session_state and st.session_state.show_history:
-                if st.button("Acessar o chat"):
-                    st.session_state.show_history = False
-                    st.session_state.selected_question = None
+                # Botão para apagar histórico
+                if st.sidebar.button("Apagar Histórico"):
+                    cursor.execute("DELETE FROM historico")
+                    conn.commit()
+                    st.sidebar.success("Histórico apagado com sucesso!")
+                    st.session_state.messages = []
                     st.rerun()
-
-                cursor.execute("SELECT resposta FROM historico WHERE pergunta = ?", (st.session_state.selected_question,))
-                resposta = cursor.fetchone()
-                
-                if resposta:
-                    st.text_area("Pergunta Selecionada", st.session_state.selected_question, height=100, disabled=True)
-                    st.text_area("Resposta", resposta[0], height=200, disabled=True)
-                
-            else:
-                if user_query:
-                    cursor.execute("SELECT resposta FROM historico WHERE pergunta = ?", (user_query,))
-                    resposta_existente = cursor.fetchone()
+            
+            # Botão para iniciar novo prompt
+            if st.sidebar.button("Iniciar Novo Prompt"):
+                if st.session_state.messages:
+                    titulo = st.session_state.messages[0]["content"] if st.session_state.messages else "Conversa Anônima"
+                    conversa = str(st.session_state.messages)
                     
-                    if resposta_existente:
-                        st.session_state.selected_question = user_query
+                    # Verificar se o título já existe no banco de dados
+                    cursor.execute("SELECT COUNT(*) FROM historico WHERE titulo = ?", (titulo,))
+                    if cursor.fetchone()[0] == 0:  # Se não encontrar nenhum título igual
+                        cursor.execute("INSERT INTO historico (titulo, conversa) VALUES (?, ?)", (titulo, conversa))
+                        conn.commit()
                     else:
-                        with st.spinner("Gerando resposta..."):
-                            response = mode.generate_content(user_query)
-                            if hasattr(response, "text"):
-                                cursor.execute("INSERT INTO historico (pergunta, resposta) VALUES (?, ?)", (user_query, response.text))
-                                conn.commit()
-                                st.session_state.selected_question = user_query
+                        st.sidebar.warning(f"O título '{titulo}' já existe no histórico.")
                 
-                if "selected_question" in st.session_state:
-                    cursor.execute("SELECT resposta FROM historico WHERE pergunta = ?", (st.session_state.selected_question,))
-                    resposta = cursor.fetchone()
-                    if resposta:
-                        st.markdown(f"**{st.session_state.selected_question}**")
-                        st.markdown(f"**{resposta[0]}**")
+                st.session_state.messages = []
+                st.rerun()
+            
+            # Exibe mensagens
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+            
+            # Entrada do usuário
+            user_query = st.chat_input("Digite sua mensagem...")
+            
+            if user_query:
+                st.session_state.messages.append({"role": "user", "content": user_query})
+                with st.chat_message("user"):
+                    st.markdown(user_query)
+                
+                with st.spinner("Gerando resposta..."):
+                    response = mode.generate_content(user_query)
+                    resposta_texto = response.text if hasattr(response, "text") else "Não consegui gerar uma resposta."
+                
+                st.session_state.messages.append({"role": "assistant", "content": resposta_texto})
+                with st.chat_message("assistant"):
+                    st.markdown(resposta_texto)
             
         else:
             st.warning("Nenhum modelo disponível para geração de conteúdo.")
