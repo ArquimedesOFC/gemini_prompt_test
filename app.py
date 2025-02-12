@@ -5,7 +5,32 @@ import sqlite3
 from datetime import datetime
 
 st.set_page_config(page_title="Assistente Gemini", page_icon=r"C:\Users\Aluno\Downloads\gemini\assistente.png", layout="wide")
-st.title("Assistente Gemini")
+
+st.markdown("""
+    <style>
+        .title {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-top: 20px;
+        }
+        .container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+        .prompt-container {
+            width: 60%;
+            margin-top: 20px;
+        }
+        .image-container {
+            margin-top: 49px;
+            text-align: right;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+st.markdown('<h1 class="title">Assistente Gemini</h1>', unsafe_allow_html=True)
 
 ia_image_path = r"C:\Users\Aluno\Downloads\gemini\assistente.png"
 
@@ -64,54 +89,57 @@ if api_key:
                     if st.sidebar.button(resumo, key=f"question_{idx}", help=pergunta):
                         st.session_state.selected_question = pergunta
                         st.session_state.show_history = True
-                        
-            col1, col2 = st.columns([0.5, 9])
-            
-            with col1:
-                st.markdown('<div style="margin-top: 28px;"></div>', unsafe_allow_html=True)
-                st.image(ia_image_path, width=60)
 
-            with col2:
-                saudacao = saudacao_hora_atual()
-                message_box = st.empty()
-
+            if not st.session_state.show_history:
                 with st.container():
-                    st.text_area(label="", value=saudacao, height=80, max_chars=None, key="greeting", disabled=True)
+                    col1, col2 = st.columns([1, 8])
+                    
+                    with col1:
+                        st.markdown('<div class="image-container">', unsafe_allow_html=True)
+                        st.image(ia_image_path, width=47)
+                        st.markdown('</div>', unsafe_allow_html=True)
+                    
+                    with col2:
+                        saudacao = saudacao_hora_atual()
+                        st.markdown('<div class="prompt-container">', unsafe_allow_html=True)
+                        st.text_area(label="", value=saudacao, height=80, max_chars=None, key="greeting", disabled=True)
+                        user_query = st.text_input("Digite sua dúvida abaixo...", "")
+                        st.markdown('</div>', unsafe_allow_html=True)
 
-                if "show_history" in st.session_state and st.session_state.show_history:
+            if "show_history" in st.session_state and st.session_state.show_history:
+                if st.button("Acessar o chat"):
+                    st.session_state.show_history = False
+                    st.session_state.selected_question = None
+                    st.rerun()
+
+                cursor.execute("SELECT resposta FROM historico WHERE pergunta = ?", (st.session_state.selected_question,))
+                resposta = cursor.fetchone()
+                
+                if resposta:
+                    st.text_area("Pergunta Selecionada", st.session_state.selected_question, height=100, disabled=True)
+                    st.text_area("Resposta", resposta[0], height=200, disabled=True)
+                
+            else:
+                if user_query:
+                    cursor.execute("SELECT resposta FROM historico WHERE pergunta = ?", (user_query,))
+                    resposta_existente = cursor.fetchone()
+                    
+                    if resposta_existente:
+                        st.session_state.selected_question = user_query
+                    else:
+                        with st.spinner("Gerando resposta..."):
+                            response = mode.generate_content(user_query)
+                            if hasattr(response, "text"):
+                                cursor.execute("INSERT INTO historico (pergunta, resposta) VALUES (?, ?)", (user_query, response.text))
+                                conn.commit()
+                                st.session_state.selected_question = user_query
+                
+                if "selected_question" in st.session_state:
                     cursor.execute("SELECT resposta FROM historico WHERE pergunta = ?", (st.session_state.selected_question,))
                     resposta = cursor.fetchone()
-                    
                     if resposta:
                         st.markdown(f"**{st.session_state.selected_question}**")
                         st.markdown(f"**{resposta[0]}**")
-                    
-                    if st.button("acessar o chat"):
-                        st.session_state.show_history = False
-                        st.session_state.selected_question = None
-                        st.rerun()
-                else:
-                    user_query = st.text_input("Digite sua dúvida abaixo...", "")
-                    if user_query:
-                        cursor.execute("SELECT resposta FROM historico WHERE pergunta = ?", (user_query,))
-                        resposta_existente = cursor.fetchone()
-                        
-                        if resposta_existente:
-                            st.session_state.selected_question = user_query
-                        else:
-                            with st.spinner("Gerando resposta..."):
-                                response = mode.generate_content(user_query)
-                                if hasattr(response, "text"):
-                                    cursor.execute("INSERT INTO historico (pergunta, resposta) VALUES (?, ?)", (user_query, response.text))
-                                    conn.commit()
-                                    st.session_state.selected_question = user_query
-                        
-                    if "selected_question" in st.session_state:
-                        cursor.execute("SELECT resposta FROM historico WHERE pergunta = ?", (st.session_state.selected_question,))
-                        resposta = cursor.fetchone()
-                        if resposta:
-                            st.markdown(f"**{st.session_state.selected_question}**")
-                            st.markdown(f"**{resposta[0]}**")
             
         else:
             st.warning("Nenhum modelo disponível para geração de conteúdo.")
