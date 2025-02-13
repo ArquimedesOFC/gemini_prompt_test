@@ -54,6 +54,8 @@ if 'show_history' not in st.session_state:
     st.session_state.show_history = False
 if 'usuario' not in st.session_state:
     st.session_state.usuario = None
+if 'current_history' not in st.session_state:
+    st.session_state.current_history = None  # Adicionando variável para controlar o histórico carregado
 
 def tela_login():
     st.subheader("Login")
@@ -156,13 +158,18 @@ else:
                     
                     if st.session_state.show_history:
                         st.sidebar.subheader("Histórico de Conversas")
-                        cursor.execute("SELECT titulo, conversa FROM historico WHERE usuario = ? ORDER BY id DESC", (st.session_state.usuario,))
+                        cursor.execute("SELECT id, titulo, conversa FROM historico WHERE usuario = ? ORDER BY id DESC", (st.session_state.usuario,))
                         historico = cursor.fetchall()
                         
                         if historico:
-                            for titulo, conversa in historico:
-                                if st.sidebar.button(titulo[:50] + "..." if len(titulo) > 50 else titulo):
-                                    st.session_state.messages = eval(conversa)
+                            for historia in historico:
+                                historia_id, titulo, conversa = historia
+                                # Utilizando o ID da conversa para garantir uma chave única
+                                if st.sidebar.button(f"{titulo[:50]}...", key=f"historico_{historia_id}"):
+                                    # Verifica se a conversa já foi carregada
+                                    if not any(msg['content'] == conversa for msg in st.session_state.messages):
+                                        st.session_state.messages = eval(conversa)
+                                        st.session_state.current_history = historia_id  # Guardar qual histórico foi carregado
                         else:
                             st.sidebar.warning("Nenhum histórico encontrado.")
                         
@@ -198,12 +205,22 @@ else:
                     
                     if st.button("Iniciar Novo Prompt"):
                         if st.session_state.messages:
-                            titulo = st.session_state.messages[0]["content"] if st.session_state.messages else "Conversa Anônima"
+                            # Salvar histórico antes de iniciar um novo prompt
+                            titulo = f"Conversa de {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                             conversa = str(st.session_state.messages)
-                            cursor.execute("INSERT INTO historico (usuario, titulo, conversa) VALUES (?, ?, ?)", 
-                                           (st.session_state.usuario, titulo, conversa))  # Associar ao usuário
+                            
+                            if st.session_state.current_history:  # Verifica se há um histórico atual carregado
+                                cursor.execute("UPDATE historico SET conversa = ? WHERE id = ?", (conversa, st.session_state.current_history))
+                                st.session_state.current_history = None
+                            else:
+                                cursor.execute("INSERT INTO historico (usuario, titulo, conversa) VALUES (?, ?, ?)", 
+                                               (st.session_state.usuario, titulo, conversa))
                             conn.commit()
-                        st.session_state.messages = []
+
+                            # Limpar as mensagens para iniciar uma nova conversa
+                            st.session_state.messages = []
+                        else:
+                            st.warning("Não há mensagens para iniciar um novo prompt.")
                 else:
                     st.warning("Nenhum modelo disponível para geração de conteúdo.")
             except Exception as e:
