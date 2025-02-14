@@ -74,51 +74,34 @@ def tela_login():
             else:
                 st.error("Usuário ou senha incorretos")
 
-def tela_configuracoes():
-    st.subheader("Configurações - Cadastro de Novos Usuários")
-    novo_usuario = st.text_input("Novo Usuário")
-    nova_senha = st.text_input("Nova Senha", type="password")
-    if st.button("Cadastrar Usuário"):
-        if novo_usuario and nova_senha:
-            cursor.execute("INSERT INTO usuarios (usuario, senha) VALUES (?, ?)", (novo_usuario, nova_senha))
-            conn.commit()
-            st.success(f"Usuário {novo_usuario} cadastrado com sucesso!")
-        else:
-            st.error("Preencha todos os campos.")
-
-def gerenciar_usuarios():
-    st.subheader("Gerenciar Usuários Ativos")
-    cursor.execute("SELECT * FROM usuarios")
+def visualizar_usuarios():
+    st.subheader("Usuários Cadastrados")
+    cursor.execute("SELECT id, usuario, senha FROM usuarios")
     usuarios = cursor.fetchall()
     
     if usuarios:
         for usuario in usuarios:
-            usuario_id, nome_usuario, _ = usuario
-            st.write(f"Usuário: {nome_usuario}")
-            
-            # Botão para editar usuário
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                if st.button(f"Alterar {nome_usuario}"):
-                    novo_nome = st.text_input(f"Novo nome para {nome_usuario}", value=nome_usuario)
-                    nova_senha = st.text_input(f"Nova senha para {nome_usuario}", type="password")
-                    if st.button("Salvar alterações"):
-                        if novo_nome and nova_senha:
-                            cursor.execute("UPDATE usuarios SET usuario = ?, senha = ? WHERE id = ?", (novo_nome, nova_senha, usuario_id))
-                            conn.commit()
-                            st.success(f"Informações de {nome_usuario} alteradas com sucesso!")
-                        else:
-                            st.error("Preencha todos os campos.")
-            
-            # Botão para excluir usuário
-            with col2:
-                if st.button(f"Excluir {nome_usuario}"):
-                    cursor.execute("DELETE FROM usuarios WHERE id = ?", (usuario_id,))
-                    conn.commit()
-                    st.success(f"Usuário {nome_usuario} excluído com sucesso!")
-
+            st.write(f"Usuário: {usuario[1]} - Senha: {usuario[2]}")
     else:
         st.write("Nenhum usuário cadastrado.")
+
+def adicionar_usuario():
+    st.subheader("Adicionar Novo Usuário")
+    novo_usuario = st.text_input("Novo Usuário")
+    nova_senha = st.text_input("Senha do Novo Usuário", type="password")
+    
+    if st.button("Adicionar Usuário"):
+        if novo_usuario and nova_senha:
+            cursor.execute("SELECT * FROM usuarios WHERE usuario = ?", (novo_usuario,))
+            user_exists = cursor.fetchone()
+            if user_exists:
+                st.error("Usuário já cadastrado.")
+            else:
+                cursor.execute("INSERT INTO usuarios (usuario, senha) VALUES (?, ?)", (novo_usuario, nova_senha))
+                conn.commit()
+                st.success("Usuário adicionado com sucesso!")
+        else:
+            st.warning("Por favor, preencha todos os campos.")
 
 if st.session_state.usuario is None:
     tela_login()
@@ -129,13 +112,11 @@ else:
             st.session_state.usuario = None
             st.rerun()  # Substituir 'experimental_rerun()' por 'rerun()'
 
-        # Acessar Configurações
-        if st.sidebar.button("Configurações"):
-            tela_configuracoes()
+        # Exibir usuários cadastrados
+        visualizar_usuarios()
 
-        # Gerenciar Usuários
-        if st.sidebar.button("Gerenciar Usuários"):
-            gerenciar_usuarios()
+        # Adicionar novo usuário
+        adicionar_usuario()
 
     else:
         api_key = os.environ.get("GOOGLE_GEMINI_API_KEY") or st.sidebar.text_input("Insira sua chave da API:", type="password")
@@ -166,6 +147,7 @@ else:
                                 historia_id, titulo, conversa = historia
                                 # Utilizando o ID da conversa para garantir uma chave única
                                 if st.sidebar.button(f"{titulo[:50]}...", key=f"historico_{historia_id}"):
+
                                     # Verifica se a conversa já foi carregada
                                     if not any(msg['content'] == conversa for msg in st.session_state.messages):
                                         st.session_state.messages = eval(conversa)
