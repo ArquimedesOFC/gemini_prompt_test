@@ -6,26 +6,6 @@ from datetime import datetime
 
 st.set_page_config(page_title="Assistente Gemini", page_icon=r"C:\Users\Aluno\Downloads\gemini\assistente.png", layout="wide")
 
-st.markdown("""
-    <style>
-        .title { text-align: center; font-size: 2.5rem; margin-top: 20px; }
-        .container { display: flex; justify-content: center; align-items: center; text-align: center; }
-        .prompt-container { width: 60%; margin-top: 20px; }
-        .footer-btn { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); }
-    </style>
-""", unsafe_allow_html=True)
-
-st.markdown('<h1 class="title">Assistente Gemini</h1>', unsafe_allow_html=True)
-
-def saudacao_hora_atual():
-    hora_atual = datetime.now().hour
-    if hora_atual < 12:
-        return "Bom dia! Como posso ajudá-lo?"
-    elif hora_atual < 18:
-        return "Boa tarde! Como posso ajudá-lo?"
-    else:
-        return "Boa noite! Como posso ajudá-lo?"
-
 # Configuração do banco de dados
 conn = sqlite3.connect("historico.db", check_same_thread=False)
 cursor = conn.cursor()
@@ -57,6 +37,15 @@ if 'usuario' not in st.session_state:
 if 'current_history' not in st.session_state:
     st.session_state.current_history = None  # Adicionando variável para controlar o histórico carregado
 
+def saudacao_hora_atual():
+    hora_atual = datetime.now().hour
+    if hora_atual < 12:
+        return "Bom dia! Como posso ajudá-lo?"
+    elif hora_atual < 18:
+        return "Boa tarde! Como posso ajudá-lo?"
+    else:
+        return "Boa noite! Como posso ajudá-lo?"
+
 def tela_login():
     st.subheader("Login")
     usuario = st.text_input("Usuário")
@@ -81,16 +70,22 @@ def visualizar_usuarios():
     
     if usuarios:
         for usuario in usuarios:
-            st.write(f"Usuário: {usuario[1]} - Senha: {usuario[2]}")
+            st.write(f"Usuário: {usuario[1]} | Senha: {usuario[2]}")
+            # Botão para excluir usuário
+            if st.button(f"Excluir {usuario[1]}", key=f"excluir_{usuario[0]}"):
+                cursor.execute("DELETE FROM usuarios WHERE id = ?", (usuario[0],))
+                conn.commit()
+                st.success(f"Usuário {usuario[1]} excluído com sucesso!")
+                st.rerun()  # Atualiza a página após exclusão
     else:
         st.write("Nenhum usuário cadastrado.")
 
 def adicionar_usuario():
     st.subheader("Adicionar Novo Usuário")
-    novo_usuario = st.text_input("Novo Usuário")
-    nova_senha = st.text_input("Senha do Novo Usuário", type="password")
+    novo_usuario = st.text_input("Novo Usuário", key="novo_usuario")
+    nova_senha = st.text_input("Senha do Novo Usuário", type="password", key="nova_senha")
     
-    if st.button("Adicionar Usuário"):
+    if st.button("Adicionar Usuário", key="adicionar_usuario"):
         if novo_usuario and nova_senha:
             cursor.execute("SELECT * FROM usuarios WHERE usuario = ?", (novo_usuario,))
             user_exists = cursor.fetchone()
@@ -103,19 +98,44 @@ def adicionar_usuario():
         else:
             st.warning("Por favor, preencha todos os campos.")
 
+# Função de logout (voltar para o menu de login)
+def logout():
+    st.session_state.usuario = None
+    st.session_state.messages = []  # Limpar mensagens do usuário
+    st.rerun()  # Substituir 'experimental_rerun()' por 'rerun()'
+
+def iniciar_novo_chat():
+    # Salvar ou atualizar o histórico
+    if st.session_state.messages:
+        titulo = f"Conversa de {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        conversa = str(st.session_state.messages)
+        
+        if st.session_state.current_history:  # Verifica se há um histórico atual carregado
+            cursor.execute("UPDATE historico SET conversa = ? WHERE id = ?", (conversa, st.session_state.current_history))
+            st.session_state.current_history = None
+        else:
+            cursor.execute("INSERT INTO historico (usuario, titulo, conversa) VALUES (?, ?, ?)", 
+                           (st.session_state.usuario, titulo, conversa))
+        conn.commit()
+    
+    # Limpar as mensagens e iniciar uma nova conversa
+    st.session_state.messages = []
+
 if st.session_state.usuario is None:
     tela_login()
 else:
-    if st.session_state.usuario == "admin":
-        st.sidebar.subheader("Admin: Gerenciar Sistema")
-        if st.sidebar.button("Sair"):
-            st.session_state.usuario = None
-            st.rerun()  # Substituir 'experimental_rerun()' por 'rerun()'
+    # Mostrar botão "Voltar ao Login" para qualquer usuário logado
+    if st.button("Voltar ao Login"):
+        logout()  # Chama a função de logout para voltar ao menu de login
 
-        # Exibir usuários cadastrados
+    if st.session_state.usuario == "admin":
+        # Área do Admin
+        st.subheader("Administração do Sistema")
+        
+        # Visualizar Usuários Cadastrados
         visualizar_usuarios()
 
-        # Adicionar novo usuário
+        # Adicionar Novo Usuário
         adicionar_usuario()
 
     else:
@@ -185,27 +205,12 @@ else:
                         with st.chat_message("assistant", avatar=r"C:\Users\Aluno\Downloads\gemini\assistente.png"):
                             st.markdown(resposta_texto)
                     
-                    if st.button("Iniciar Novo Prompt"):
-                        if st.session_state.messages:
-                            # Salvar histórico antes de iniciar um novo prompt
-                            titulo = f"Conversa de {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-                            conversa = str(st.session_state.messages)
-                            
-                            if st.session_state.current_history:  # Verifica se há um histórico atual carregado
-                                cursor.execute("UPDATE historico SET conversa = ? WHERE id = ?", (conversa, st.session_state.current_history))
-                                st.session_state.current_history = None
-                            else:
-                                cursor.execute("INSERT INTO historico (usuario, titulo, conversa) VALUES (?, ?, ?)", 
-                                               (st.session_state.usuario, titulo, conversa))
-                            conn.commit()
+                    # Botão para iniciar um novo chat
+                    if st.button("Iniciar Novo Chat"):
+                        iniciar_novo_chat()
 
-                            # Limpar as mensagens para iniciar uma nova conversa
-                            st.session_state.messages = []
-                        else:
-                            st.warning("Não há mensagens para iniciar um novo prompt.")
                 else:
-                    st.warning("Nenhum modelo disponível para geração de conteúdo.")
+                    st.warning("Não há modelos disponíveis para essa chave de API.")
+            
             except Exception as e:
-                st.error(f"Erro ao conectar à API: {str(e)}")
-        else:
-            st.warning("Por favor, insira sua chave da API.")
+                st.error(f"Erro ao acessar o modelo Gemini: {str(e)}")
